@@ -71,6 +71,8 @@ namespace UniVRMXT.Mtoonxt
         private List<VrmxtMaterialsMtoonxtRelationshipAuthoring> stencilRelationships =
             new List<VrmxtMaterialsMtoonxtRelationshipAuthoring>();
 
+        public List<VrmxtShadowReceiver> ShadowReceivers = new List<VrmxtShadowReceiver>();
+
         public IReadOnlyList<VrmxtMaterialsMtoonxtPair> Pairs => pairs;
 
         public IReadOnlyList<VrmxtMaterialsMtoonxtRelationshipAuthoring> StencilRelationships =>
