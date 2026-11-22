@@ -7,6 +7,21 @@ namespace UniVRMXT.Tests
     public sealed class VrmxtShadowReceiverTests
     {
         [Test]
+        public void DepthIndependentFaceFillFollowsBothOutlinePasses()
+        {
+            var material = new Material(Shader.Find("VRMXT/MToonXT10"));
+            try {
+                foreach (var outline in new[] { "FORWARD_BASE_OUTLINE", "FORWARD_BASE_OUTLINE_OVERLAY" })
+                {
+                    int pass = material.FindPass(outline);
+                    Assert.That(pass, Is.GreaterThanOrEqualTo(0));
+                    Assert.That(material.FindPass("FORWARD_BASE"), Is.GreaterThan(pass));
+                    Assert.That(material.FindPass("FORWARD_BASE_OVERLAY"), Is.GreaterThan(pass));
+                }
+            } finally { Object.DestroyImmediate(material); }
+        }
+
+        [Test]
         public void ReciprocalFaceExclusionsShareAGroupAndKeepHair()
         {
             var shader = Shader.Find("Standard");
