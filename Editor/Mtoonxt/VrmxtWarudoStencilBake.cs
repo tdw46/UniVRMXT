@@ -32,7 +32,10 @@ namespace UniVRMXT.Mtoonxt.Editor
 
         static Mesh MeshOf(Renderer r) => r is SkinnedMeshRenderer sk ? sk.sharedMesh : r.GetComponent<MeshFilter>()?.sharedMesh;
 
-        internal static void Prepare(string prefabPath, VrmxtShadowRuntime original)
+        static bool UsesOutline(Material material) => material && material.HasProperty("_VRMXTGeometricOutline")
+            && material.GetFloat("_OutlineWidthMode") != 0 && material.GetFloat("_OutlineWidth") > 0;
+
+        internal static void Prepare(string prefabPath, VrmxtShadowRuntime original, bool geometricOutlines)
         {
             var directory = Path.GetDirectoryName(prefabPath).Replace('\\', '/');
             var assetFolder = directory + "/VRMXT-" + AssetDatabase.AssetPathToGUID(prefabPath);
@@ -77,8 +80,18 @@ namespace UniVRMXT.Mtoonxt.Editor
                 }
                 if (!changed) continue;
                 var mesh = MeshOf(r);
-                if (mesh && !EditorUtility.IsPersistent(mesh))
-                    surface.mesh = Save(Object.Instantiate(mesh), assetFolder + "/mesh-" + surfaces.Count + ".asset");
+                bool needsDirections = geometricOutlines && Array.Exists(slots, UsesOutline);
+                if (mesh && (needsDirections || !EditorUtility.IsPersistent(mesh)))
+                {
+                    var copy = Object.Instantiate(mesh);
+                    if (needsDirections)
+                    {
+                        VrmxtOutlineDirections.Bake(copy, entry.authored.Length);
+                        foreach (var mat in slots)
+                            if (UsesOutline(mat)) mat.SetFloat("_VRMXTGeometricOutline", 1);
+                    }
+                    surface.mesh = Save(copy, assetFolder + "/mesh-" + surfaces.Count + ".asset");
+                }
                 if (preview)
                     foreach (var draw in preview.Draws)
                     {
@@ -93,6 +106,9 @@ namespace UniVRMXT.Mtoonxt.Editor
                 }
                 surfaces.Add(surface);
             }
+            // Keep the portable relationship graph for re-export. OnEnable would otherwise
+            // append its auxiliary slots again to the already baked prefab after loading.
+            store.enabled = false;
             if (preview) preview.PrepareExportCopy();
             foreach (var surface in surfaces)
             {

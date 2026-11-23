@@ -52,7 +52,7 @@ namespace UniVRMXT.Mtoonxt.Editor
             PreparePrefab(AssetDatabase.GetAssetPath(Selection.activeObject));
         }
 
-        public static void PreparePrefab(string prefab)
+        public static void PreparePrefab(string prefab, bool geometricOutlineNormals = false)
         {
             var asset = AssetDatabase.LoadAssetAtPath<GameObject>(prefab);
             if (!asset || !prefab.StartsWith("Assets/", StringComparison.Ordinal) ||
@@ -75,6 +75,7 @@ namespace UniVRMXT.Mtoonxt.Editor
             var code = source.text.Replace("VrmxtShadowRuntime", "WarudoVrmxtShadowRuntime")
                 .Replace("namespace UniVRMXT.Mtoonxt", "namespace UniVRMXT.WarudoMods.M" + guid);
             code = Stamp + Hash(code) + "\n" + code;
+            SessionState.SetBool(Pending + ".geometricOutline", geometricOutlineNormals);
             SessionState.SetString(Pending, prefab);
             if (File.Exists(path) && File.ReadAllText(path) == code) { Finish(); return; }
             // A differing source may have been intentionally edited by the artist.
@@ -105,7 +106,7 @@ namespace UniVRMXT.Mtoonxt.Editor
             var prefab = PrefabUtility.LoadPrefabContents(path);
             try {
                 foreach (var original in prefab.GetComponentsInChildren<VrmxtShadowRuntime>(true)) {
-                    VrmxtWarudoStencilBake.Prepare(path, original);
+                    VrmxtWarudoStencilBake.Prepare(path, original, SessionState.GetBool(Pending + ".geometricOutline", false));
                     foreach (var entry in original.materialSlots)
                         if (entry.renderer is SkinnedMeshRenderer skin && entry.authored.Length > 0 &&
                             (!skin.sharedMesh || !EditorUtility.IsPersistent(skin.sharedMesh)))
