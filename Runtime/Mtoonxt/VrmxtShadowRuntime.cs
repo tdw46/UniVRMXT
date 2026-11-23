@@ -46,6 +46,8 @@ namespace UniVRMXT.Mtoonxt
         static readonly List<Material> slotScratch = new List<Material>();
         static readonly Dictionary<Renderer, Material[]> liveSlots = new Dictionary<Renderer, Material[]>();
 
+        [NonSerialized] public Func<Renderer, int, int> overlaySourceIndex;
+
         public void CaptureSlots()
         {
             var bindings = new List<MaterialSlots>();
@@ -101,6 +103,7 @@ namespace UniVRMXT.Mtoonxt
 
         void OnEnable()
         {
+            if (hosts.Contains(this)) return;
             hosts.Add(this);
             if (hosts.Count == 1)
             {
@@ -115,7 +118,7 @@ namespace UniVRMXT.Mtoonxt
 
         void OnDisable()
         {
-            hosts.Remove(this);
+            if (!hosts.Remove(this)) return;
             Restore();
             rebuild = true;
             if (hosts.Count == 0)
@@ -125,6 +128,23 @@ namespace UniVRMXT.Mtoonxt
             }
         }
 
+#if UNITY_EDITOR
+        // A scene-authoring host owns the preview lease and releases it before
+        // saving, changing scenes, entering Play Mode or unloading assemblies.
+        public void SetScenePreview(bool active)
+        {
+            if (Application.isPlaying) return;
+            if (active && isActiveAndEnabled && gameObject.scene.isLoaded) OnEnable();
+            else OnDisable();
+        }
+#endif
+
+        static void Release(UnityEngine.Object transient)
+        {
+            if (Application.isPlaying) Destroy(transient);
+            else DestroyImmediate(transient);
+        }
+
         static void Restore()
         {
             if (sun) sun.cullingMask = (sun.cullingMask & ~reservedMask) | (originalMask & reservedMask);
@@ -132,8 +152,8 @@ namespace UniVRMXT.Mtoonxt
             foreach (var entry in cameraMasks)
                 if (entry.Key)
                     entry.Key.cullingMask = (entry.Key.cullingMask & ~reservedMask) | entry.Value;
-            foreach (var go in objects) if (go) { go.SetActive(false); retiring.Add(go); Destroy(go); }
-            foreach (var mesh in meshes) if (mesh) Destroy(mesh);
+            foreach (var go in objects) if (go) { go.SetActive(false); retiring.Add(go); Release(go); }
+            foreach (var mesh in meshes) if (mesh) Release(mesh);
             groups.Clear(); objects.Clear(); meshes.Clear(); sections.Clear(); copies.Clear();
             sourceLayers.Clear(); liveSlots.Clear(); suppressed.Clear(); cameraMasks.Clear(); reservedMask = 0; sun = null;
         }
@@ -149,7 +169,7 @@ namespace UniVRMXT.Mtoonxt
             if (rebuild || SlotsChanged() || (groups.Count > 0 && (!sun || !sun.isActiveAndEnabled ||
                 (RenderSettings.sun && RenderSettings.sun != sun))))
             {
-                if (Time.unscaledTime < retryAt) return;
+                if (Time.realtimeSinceStartup < retryAt) return;
                 Restore();
                 rebuild = false;
                 try { Build(); }
@@ -214,6 +234,13 @@ namespace UniVRMXT.Mtoonxt
                     var slots = entry.renderer.sharedMaterials;
                     liveSlots[entry.renderer] = slots;
                     sourceLayers[entry.renderer] = entry.renderer.gameObject.layer;
+                    // The relationship renderer appends overlays in draw order.
+                    // Those submissions receive the source slot's shadow policy.
+                    for (int slot = entry.authored.Length; host.overlaySourceIndex != null && slot < slots.Length; ++slot)
+                    {
+                        int index = host.overlaySourceIndex(entry.renderer, slot - entry.authored.Length);
+                        if (index >= 0 && index < entry.authored.Length) originals[(entry.renderer, slot)] = entry.authored[index];
+                    }
                     for (int i = 0; i < entry.authored.Length && i < slots.Length; ++i)
                         if (entry.authored[i]) originals[(entry.renderer, i)] = entry.authored[i];
                 }
@@ -224,7 +251,7 @@ namespace UniVRMXT.Mtoonxt
                         policies[rule.receiver] = rule;
             if (policies.Count == 0) return;
             sun = MainLight();
-            if (!sun) { rebuild = true; retryAt = Time.unscaledTime + 1; return; }
+            if (!sun) { rebuild = true; retryAt = Time.realtimeSinceStartup + 1; return; }
             originalMask = sun.cullingMask;
             int occupied = 0;
             // Other embedded runtimes may already own transient layers, even if their objects are hidden from FindObjectsOfType.
@@ -321,7 +348,7 @@ namespace UniVRMXT.Mtoonxt
 
         static GameObject Own(string name, Transform parent, int layer)
         {
-            var go = new GameObject(name) { hideFlags = HideFlags.DontSave, layer = layer };
+            var go = new GameObject(name) { hideFlags = HideFlags.HideAndDontSave, layer = layer };
             go.transform.SetParent(parent, false); objects.Add(go); return go;
         }
 

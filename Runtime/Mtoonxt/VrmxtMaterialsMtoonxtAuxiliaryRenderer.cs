@@ -146,6 +146,13 @@ namespace UniVRMXT.Mtoonxt
             cameras[camera] = before;
         }
 
+        int OverlaySourceIndex(Renderer renderer, int overlay)
+        {
+            foreach (var draw in draws)
+                if (draw.AfterOpaque && draw.Renderer == renderer && overlay-- == 0) return draw.Submesh;
+            return -1;
+        }
+
         private void InstallNativeMaterials()
         {
             if (nativeBindings.Count > 0 || GraphicsSettings.currentRenderPipeline != null)
@@ -153,6 +160,8 @@ namespace UniVRMXT.Mtoonxt
                 return;
             }
 
+            var shadows = GetComponent<VrmxtShadowRuntime>();
+            if (shadows) shadows.overlaySourceIndex = OverlaySourceIndex;
             var grouped = new Dictionary<Renderer, List<VrmxtMtoonxtAuxiliaryDraw>>();
             foreach (var draw in draws)
             {
