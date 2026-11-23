@@ -348,7 +348,8 @@ namespace UniVRMXT.Mtoonxt
 
         static GameObject Own(string name, Transform parent, int layer)
         {
-            var go = new GameObject(name) { hideFlags = HideFlags.HideAndDontSave, layer = layer };
+            var flags = Application.isPlaying ? HideFlags.DontSave : HideFlags.HideAndDontSave;
+            var go = new GameObject(name) { hideFlags = flags, layer = layer };
             go.transform.SetParent(parent, false); objects.Add(go); return go;
         }
 
