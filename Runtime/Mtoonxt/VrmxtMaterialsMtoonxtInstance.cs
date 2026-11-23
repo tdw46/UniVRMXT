@@ -71,6 +71,11 @@ namespace UniVRMXT.Mtoonxt
         private List<VrmxtMaterialsMtoonxtRelationshipAuthoring> stencilRelationships =
             new List<VrmxtMaterialsMtoonxtRelationshipAuthoring>();
 
+        // Bundled shaders can be absent from Shader.Find in a player. Retain the
+        // host's resolved references across character cloning and reactivation.
+        [SerializeField, HideInInspector] internal Shader graphShader;
+        [SerializeField, HideInInspector] internal Shader relationshipCoverageShader;
+
         public List<VrmxtShadowReceiver> ShadowReceivers = new List<VrmxtShadowReceiver>();
 
         public IReadOnlyList<VrmxtMaterialsMtoonxtPair> Pairs => pairs;
