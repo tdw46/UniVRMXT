@@ -86,7 +86,9 @@ namespace UniVRMXT.Mtoonxt.Editor
                     var copy = Object.Instantiate(mesh);
                     if (needsDirections)
                     {
-                        VrmxtOutlineDirections.Bake(copy, entry.authored.Length);
+                        bool importedDirections = copy.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.TexCoord7)
+                            && Array.Exists(slots, mat => UsesOutline(mat) && mat.GetFloat("_VRMXTGeometricOutline") > 0);
+                        if (!importedDirections) VrmxtOutlineDirections.Bake(copy, entry.authored.Length);
                         foreach (var mat in slots)
                             if (UsesOutline(mat)) mat.SetFloat("_VRMXTGeometricOutline", 1);
                     }

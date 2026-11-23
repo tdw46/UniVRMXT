@@ -4,6 +4,7 @@ using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 using UniVRMXT.MaterialsOverride;
+using UniVRMXT.Format;
 using UniVRMXT.Mtoonxt;
 using UniVRMXT.Vfx;
 
@@ -147,12 +148,13 @@ namespace UniVRMXT.Editor.MaterialsOverride
             // Authoring shell for materials-override (stock MToon until Materialize).
             // MToonXT Apply uses packaged VRMXT/MToonXT10 (Shader.Find).
             VrmxtMaterialsMtoonxtRuntime.TryAttachFromGltfJson(root, json, out _);
-            VrmxtMaterialsMtoonxtApplier.Apply(root, json);
+            VrmxtMaterialsMtoonxtApplier.Apply(root, json, ResolvePackageShader);
             // Persist only the portable authoring graph and original mesh/material slots.
             // Generated native layers are DontSave resources; the store's OnEnable
             // reconstructs them on an instantiated avatar, including player builds.
             root.GetComponent<VrmxtMaterialsMtoonxtAuxiliaryRenderer>()?.Configure(null, null);
             root.GetComponent<VrmxtStencilGraphRenderer>()?.Configure(null);
+            if (root.GetComponent<VrmxtMaterialsMtoonxtInstance>()) PrepareOutlineDirections(root, assetPath);
 
             if (!VrmxtMaterialsOverrideRuntime.TryAttachFromGltfJson(root, json, out var store))
             {
@@ -181,6 +183,56 @@ namespace UniVRMXT.Editor.MaterialsOverride
             {
                 glbTextures?.Dispose();
             }
+        }
+
+        static Shader ResolvePackageShader(string name)
+        {
+            const string shaders = "Packages/com.vrmxt.univrmxt/Runtime/Shaders/";
+            string path = name switch
+            {
+                VrmxtMaterialsMtoonxt.BuiltinShaderName => "MToonxt/Builtin/vrmxt_materials_mtoonxt.shader",
+                VrmxtMaterialsMtoonxt.UrpShaderName => "MToonxt/Urp/vrmxt_materials_mtoonxt_urp.shader",
+                "Hidden/UniVRMXT/StencilCoverageMask" => "VrmxtStencilCoverageMask.shader",
+                _ => null
+            };
+            return path == null ? Shader.Find(name) : AssetDatabase.LoadAssetAtPath<Shader>(shaders + path);
+        }
+
+        static void PrepareOutlineDirections(GameObject root, string assetPath)
+        {
+            var prepared = new System.Collections.Generic.HashSet<Mesh>();
+            var usable = new System.Collections.Generic.HashSet<Material>();
+            var excluded = new System.Collections.Generic.HashSet<Material>();
+            bool Local(UnityEngine.Object asset)
+            {
+                var path = AssetDatabase.GetAssetPath(asset);
+                return string.IsNullOrEmpty(path) || path == assetPath;
+            }
+            foreach (var renderer in root.GetComponentsInChildren<Renderer>(true))
+            {
+                var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh :
+                    renderer.GetComponent<MeshFilter>()?.sharedMesh;
+                if (!mesh) continue;
+                foreach (var mat in renderer.sharedMaterials)
+                {
+                    if (!mat || !mat.HasProperty("_VRMXTGeometricOutline") || !Local(mat) ||
+                        mat.GetFloat("_OutlineWidthMode") == 0 || mat.GetFloat("_OutlineWidth") <= 0) continue;
+                    if (!prepared.Contains(mesh))
+                    {
+                        // Authored UV8 and external mesh assets remain owned by the artist.
+                        if (!Local(mesh) || mesh.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.TexCoord7) ||
+                            !mesh.isReadable || mesh.normals.Length != mesh.vertexCount ||
+                            (!mesh.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.Tangent) &&
+                             !mesh.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.TexCoord0)))
+                        { excluded.Add(mat); continue; }
+                        UniVRMXT.Mtoonxt.Editor.VrmxtOutlineDirections.Bake(mesh, mesh.subMeshCount);
+                        prepared.Add(mesh);
+                    }
+                    usable.Add(mat);
+                }
+            }
+            usable.ExceptWith(excluded);
+            foreach (var mat in usable) mat.SetFloat("_VRMXTGeometricOutline", 1);
         }
 
         private static bool TryLoadGlbTextures(
